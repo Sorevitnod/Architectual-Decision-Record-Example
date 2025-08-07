@@ -1,0 +1,51 @@
+# ADR 104: Use of Dedicated Queues Between Order Capture, Payment Processor, and Order Tracker Services
+
+**Status:** Accepted  
+**Date:** 2025-07-25  
+**Author:** Jane Doe  
+**Approved By:** Architecture Working Group  
+**Last Updated:** 2025-07-25
+
+---
+
+## Context
+
+In our e-commerce checkout architecture, the `Order Capture` service must asynchronously forward order events to both the `Payment Processor` service (to initiate payment authorization) and the `Order Tracker` service (to start order lifecycle management).
+
+Three patterns were considered:
+
+- A single **publish/subscribe topic** (e.g., Kafka, Event Grid)
+- **RESTful API calls** between services
+- **Dedicated point-to-point queues** (e.g., SQS FIFO, Azure Storage Queues)
+
+## Decision
+
+We will implement **dedicated point-to-point message queues** between the `Order Capture` service and each downstream consumer.
+
+- The communication is **asynchronous and one-way**; no response is needed.
+- The `Payment Processor` requires **strict event ordering**, which FIFO queues provide.
+- The `Order Tracker` integrates with third parties and may need **backpressure**, which is easier to manage with an independent queue.
+- A shared pub/sub topic would require additional **consumer filtering** and **shared state**, introducing unnecessary complexity.
+- REST-based integration was rejected due to **tight coupling**, **lack of retries**, and **reliability concerns**.
+
+## Consequences
+
+- Slight increase in **operational complexity**, as the `Order Capture` service must fan out to two queues.
+- **Additional infrastructure** to manage multiple queues with different QoS requirements.
+- **Monitoring and observability** will need to cover two distinct paths.
+  
+## Update
+
+After review at the **July 25, 2025 Architecture Working Group**, it was confirmed that **bypassing the API Gateway** for internal asynchronous messaging is acceptable due to the trusted network boundary and the internal nature of the data.
+
+## Compliance
+
+- All internal async fan-out scenarios must follow this pattern unless explicitly reviewed.
+- Queue configuration must ensure **FIFO ordering**, **durability**, and **dead-letter handling**.
+- Integration and load tests must validate **ordering**, **delivery**, and **backpressure handling**.
+
+## Notes
+
+This ADR replaces earlier discussions considering a single shared topic for fan-out.  
+Diagrams and message flow specifications are documented in Confluence under `Architecture > Checkout > Messaging Patterns`.
+
